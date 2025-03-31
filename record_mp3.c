@@ -3,6 +3,7 @@
 #include <alsa/asoundlib.h>
 #include <unistd.h>
 #include <termios.h>
+#include <sys/wait.h>
 
 #define PCM_DEVICE "hw:0,0"
 #define SAMPLE_RATE 44100
@@ -33,6 +34,29 @@ int key_pressed()
 {
     char ch;
     return (read(STDIN_FILENO, &ch, 1) == 1) ? ch : 0;
+}
+
+//Function to convert RAW audio file to MP3
+void convert_to_mp3(char *raw_filename, char *mp3_filename)
+{
+    pid_t pid = fork();
+    if(pid < 0) {
+        fprintf(stderr, "Error: Failed to fork process!\n");
+        return;
+    } else if(pid > 0) {
+        int status;
+        waitpid(pid, &status, 0);
+        if(WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+            printf("Conversion successful! MP3 file saved as '%s'\n", mp3_filename);
+        } else {
+            fprintf(stderr, "Error: Conversion failed!\n");
+        }
+    } else {
+        execlp("ffmpeg", "ffmpeg", "-f", "s16le", "-ar", "44100", "-ac", "1", "-i", raw_filename, "-codec:a", "libmp3lame", 
+               "-q:a", "2", mp3_filename, NULL);
+        fprintf(stderr, "Error: Failed to execute ffmpeg!\n");
+        exit(1);
+    }
 }
 
 int main()
@@ -76,7 +100,10 @@ int main()
         {
             printf("Recording started! Press 's' to stop.\n");
 
-            FILE *fp = fopen("test.raw", "wb");
+            char *raw_filename = "test.raw";
+            char *mp3_filename = "test.mp3";
+
+            FILE *fp = fopen(raw_filename, "wb");
             if (!fp)
             {
                 fprintf(stderr, "Error: Failed to open file for writing!\n");
@@ -134,6 +161,9 @@ int main()
             fclose(fp);
             free(buffer);
             printf("Recording saved as 'test.raw'. File size: %lu bytes\n", total_bytes_written);
+
+            printf("Converting to MP3...\n");
+            convert_to_mp3(raw_filename, mp3_filename);
         }
 
         if (key == 'q')
